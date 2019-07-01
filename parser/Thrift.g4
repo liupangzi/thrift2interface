@@ -1,3 +1,5 @@
+// antlr -visitor -Dlanguage=Go -o . -package parser Thrift.g4
+
 grammar Thrift;
 
 document

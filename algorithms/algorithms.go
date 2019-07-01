@@ -1,9 +1,10 @@
 package algorithms
 
 import (
-	"github.com/sirupsen/logrus"
 	"os"
 	"strings"
+
+	"github.com/sirupsen/logrus"
 )
 
 var logger logrus.Logger

@@ -3,14 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"path"
+	"strings"
+
 	"github.com/antlr/antlr4/runtime/Go/antlr"
 	"github.com/liupangzi/thrift2interface/algorithms"
 	"github.com/liupangzi/thrift2interface/parser"
 	"github.com/liupangzi/thrift2interface/template"
 	"github.com/sirupsen/logrus"
-	"os"
-	"path"
-	"strings"
 )
 
 var (

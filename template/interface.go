@@ -2,10 +2,11 @@ package template
 
 import (
 	"bytes"
-	"github.com/iancoleman/strcase"
-	"github.com/sirupsen/logrus"
 	"strings"
 	"text/template"
+
+	"github.com/iancoleman/strcase"
+	"github.com/sirupsen/logrus"
 )
 
 const (
