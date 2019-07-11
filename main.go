@@ -56,11 +56,11 @@ func (r *RootThriftListener) EnterInclude(ctx *parser.IncludeContext) {
 		path.Dir(r.Thrift),
 		ctx.LITERAL().GetText()[1 : len(ctx.LITERAL().GetText())-1],
 	}, string(os.PathSeparator)))
-	r.Logger.Infof("parsing leaf thrift file %s...", leafThrift)
+	r.Logger.Infof("Parsing leaf thrift file `%s`...", leafThrift)
 
 	// quit if current thrift file has been parsed
 	if _, ok := r.MI.ThriftFiles[leafThrift]; ok {
-		r.Logger.Infof("leaf thrift file %s has been parsed", leafThrift)
+		r.Logger.Infof("Leaf thrift file `%s` has already been parsed", leafThrift)
 		return
 	}
 
@@ -152,7 +152,7 @@ func (l *LeafThriftListener) EnterDocument(ctx *parser.DocumentContext) {
 			for _, s := range namespace.AllIDENTIFIER() {
 				skippedNamespaces = append(skippedNamespaces, s.GetText())
 			}
-			l.Logger.Infof("Skip non-golang namespace: %s", strings.Join(skippedNamespaces, " "))
+			l.Logger.Infof("Skip non-golang namespace: `%s`", strings.Join(skippedNamespaces, " "))
 		}
 	}
 }
@@ -164,7 +164,7 @@ func (l *LeafThriftListener) EnterInclude(ctx *parser.IncludeContext) {
 	}, string(os.PathSeparator)))
 
 	if _, ok := l.MI.ThriftFiles[leafThrift]; ok {
-		l.Logger.Infof("leaf thrift file %s has been parsed", leafThrift)
+		l.Logger.Infof("Leaf thrift file `%s` has already been parsed", leafThrift)
 		return
 	}
 
