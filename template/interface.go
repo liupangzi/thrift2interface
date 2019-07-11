@@ -68,14 +68,14 @@ type MetaInterface struct {
 	NamespaceAlias map[string]string
 }
 
-func NewMetaInterface() (*MetaInterface, error) {
+func NewMetaInterface() *MetaInterface {
 	return &MetaInterface{
 		Methods:                       make([]*Method, 0),
 		ThriftFiles:                   make(map[string]string),
 		PrefixedStructToName:          make(map[string]string),
 		PrefixedStructToFullNamespace: make(map[string]string),
 		NamespaceAlias:                make(map[string]string),
-	}, nil
+	}
 }
 
 func (mi *MetaInterface) String() string {

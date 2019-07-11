@@ -14,13 +14,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var (
-	mi     *template.MetaInterface
-	Logger = logrus.New()
-)
-
 type RootThriftListener struct {
 	*parser.BaseThriftListener
+
+	MI     *template.MetaInterface
+	Logger *logrus.Logger
 
 	Thrift        string
 	FullNamespace string
@@ -39,7 +37,7 @@ func (r *RootThriftListener) EnterDocument(ctx *parser.DocumentContext) {
 		// namespace = [["py", "namespace"], ["go", "namespace"], etc...]
 		if len(namespace.AllIDENTIFIER()) == 2 && namespace.IDENTIFIER(0).GetText() == "go" {
 			ns := strings.Split(namespace.IDENTIFIER(1).GetText(), ".")
-			mi.ThriftFiles[r.Thrift] = ""
+			r.MI.ThriftFiles[r.Thrift] = ""
 			r.FullNamespace = namespace.IDENTIFIER(1).GetText()
 			r.Namespace = ns[len(ns)-1]
 		} else {
@@ -47,7 +45,7 @@ func (r *RootThriftListener) EnterDocument(ctx *parser.DocumentContext) {
 			for _, s := range namespace.AllIDENTIFIER() {
 				skippedNamespaces = append(skippedNamespaces, s.GetText())
 			}
-			Logger.Infof("Skip non-golang namespace: %s", strings.Join(skippedNamespaces, " "))
+			r.Logger.Infof("Skip non-golang namespace: %s", strings.Join(skippedNamespaces, " "))
 		}
 	}
 }
@@ -58,46 +56,49 @@ func (r *RootThriftListener) EnterInclude(ctx *parser.IncludeContext) {
 		path.Dir(r.Thrift),
 		ctx.LITERAL().GetText()[1 : len(ctx.LITERAL().GetText())-1],
 	}, string(os.PathSeparator)))
-	Logger.Infof("parsing leaf thrift file %s...", leafThrift)
+	r.Logger.Infof("parsing leaf thrift file %s...", leafThrift)
 
 	// quit if current thrift file has been parsed
-	if _, ok := mi.ThriftFiles[leafThrift]; ok {
-		Logger.Infof("leaf thrift file %s has been parsed", leafThrift)
+	if _, ok := r.MI.ThriftFiles[leafThrift]; ok {
+		r.Logger.Infof("leaf thrift file %s has been parsed", leafThrift)
 		return
 	}
 
 	if _, err := os.Stat(leafThrift); os.IsNotExist(err) {
-		Logger.Errorf("Open thrift file `%s` failed", leafThrift)
+		r.Logger.Errorf("Open thrift file `%s` failed", leafThrift)
 		os.Exit(1)
 	}
 
 	fs, err := antlr.NewFileStream(leafThrift)
 	if err != nil {
-		Logger.Errorf("antlr.NewFileStream err: %v", err)
+		r.Logger.Errorf("antlr.NewFileStream err: %v", err)
 		os.Exit(1)
 	}
 
 	p := parser.NewThriftParser(antlr.NewCommonTokenStream(parser.NewThriftLexer(fs), antlr.TokenDefaultChannel))
 	p.BuildParseTrees = true
 
-	var listener LeafThriftListener
-	listener.Thrift = algorithms.SimplifyUnixDirectoryPath(leafThrift)
-	antlr.ParseTreeWalkerDefault.Walk(&listener, p.Document())
+	listener := &LeafThriftListener{
+		Logger: r.Logger,
+		MI:     r.MI,
+		Thrift: algorithms.SimplifyUnixDirectoryPath(leafThrift),
+	}
+	antlr.ParseTreeWalkerDefault.Walk(listener, p.Document())
 }
 
 // EnterService: get current interface's name
 func (r *RootThriftListener) EnterService(ctx *parser.ServiceContext) {
-	mi.ServiceName = strings.Title(ctx.IDENTIFIER(0).GetText())
-	Logger.Infof("ServiceName: %s", mi.ServiceName)
+	r.MI.ServiceName = strings.Title(ctx.IDENTIFIER(0).GetText())
+	r.Logger.Infof("ServiceName: %s", r.MI.ServiceName)
 }
 
 // EnterGoStruct: get full namespace and raw name of prefixed method
 func (r *RootThriftListener) EnterGoStruct(ctx *parser.GoStructContext) {
 	// prefixed.method => full namespace
-	mi.PrefixedStructToFullNamespace[ctx.IDENTIFIER().GetText()] = r.FullNamespace
+	r.MI.PrefixedStructToFullNamespace[ctx.IDENTIFIER().GetText()] = r.FullNamespace
 	// prefixed.method => raw name
-	mi.PrefixedStructToName[ctx.IDENTIFIER().GetText()] = ctx.IDENTIFIER().GetText()
-	Logger.Infof("RootThriftListener: prefixed method=%s, raw name=%s, full namespace=%s", ctx.IDENTIFIER().GetText(), ctx.IDENTIFIER().GetText(), r.FullNamespace)
+	r.MI.PrefixedStructToName[ctx.IDENTIFIER().GetText()] = ctx.IDENTIFIER().GetText()
+	r.Logger.Infof("RootThriftListener: prefixed method=%s, raw name=%s, full namespace=%s", ctx.IDENTIFIER().GetText(), ctx.IDENTIFIER().GetText(), r.FullNamespace)
 }
 
 // EnterFunction: get res/res/method name
@@ -117,13 +118,16 @@ func (r *RootThriftListener) EnterFunction(ctx *parser.FunctionContext) {
 		method.Request = ""
 	}
 
-	mi.Methods = append(mi.Methods, method)
-	Logger.Infof("append method: %+v", method)
+	r.MI.Methods = append(r.MI.Methods, method)
+	r.Logger.Infof("append method: %+v", method)
 }
 
 // LeafThriftListener inclusive thrift listener
 type LeafThriftListener struct {
 	*parser.BaseThriftListener
+
+	MI     *template.MetaInterface
+	Logger *logrus.Logger
 
 	Thrift        string
 	FullNamespace string
@@ -139,7 +143,7 @@ func (l *LeafThriftListener) EnterDocument(ctx *parser.DocumentContext) {
 
 		namespace := headerNamespace.(*parser.NamespaceContext)
 		if len(namespace.AllIDENTIFIER()) == 2 && namespace.IDENTIFIER(0).GetText() == "go" {
-			mi.ThriftFiles[l.Thrift] = ""
+			l.MI.ThriftFiles[l.Thrift] = ""
 			ns := strings.Split(namespace.IDENTIFIER(1).GetText(), ".")
 			l.FullNamespace = namespace.IDENTIFIER(1).GetText()
 			l.Namespace = ns[len(ns)-1]
@@ -148,7 +152,7 @@ func (l *LeafThriftListener) EnterDocument(ctx *parser.DocumentContext) {
 			for _, s := range namespace.AllIDENTIFIER() {
 				skippedNamespaces = append(skippedNamespaces, s.GetText())
 			}
-			Logger.Infof("Skip non-golang namespace: %s", strings.Join(skippedNamespaces, " "))
+			l.Logger.Infof("Skip non-golang namespace: %s", strings.Join(skippedNamespaces, " "))
 		}
 	}
 }
@@ -159,39 +163,43 @@ func (l *LeafThriftListener) EnterInclude(ctx *parser.IncludeContext) {
 		ctx.LITERAL().GetText()[1 : len(ctx.LITERAL().GetText())-1],
 	}, string(os.PathSeparator)))
 
-	if _, ok := mi.ThriftFiles[leafThrift]; ok {
-		Logger.Infof("leaf thrift file %s has been parsed", leafThrift)
+	if _, ok := l.MI.ThriftFiles[leafThrift]; ok {
+		l.Logger.Infof("leaf thrift file %s has been parsed", leafThrift)
 		return
 	}
 
 	if _, err := os.Stat(leafThrift); os.IsNotExist(err) {
-		Logger.Errorf("Open thrift file `%s` failed", leafThrift)
+		l.Logger.Errorf("Open thrift file `%s` failed", leafThrift)
 		os.Exit(1)
 	}
 
 	fs, err := antlr.NewFileStream(leafThrift)
 	if err != nil {
-		Logger.Errorf("antlr.NewFileStream err: %v", err)
+		l.Logger.Errorf("antlr.NewFileStream err: %v", err)
 		os.Exit(1)
 	}
 
 	p := parser.NewThriftParser(antlr.NewCommonTokenStream(parser.NewThriftLexer(fs), antlr.TokenDefaultChannel))
 	p.BuildParseTrees = true
 
-	var listener LeafThriftListener
-	listener.Thrift = leafThrift
-	antlr.ParseTreeWalkerDefault.Walk(&listener, p.Document())
+	listener := &LeafThriftListener{
+		Logger: l.Logger,
+		MI:     l.MI,
+		Thrift: leafThrift,
+	}
+	antlr.ParseTreeWalkerDefault.Walk(listener, p.Document())
 }
 
 func (l *LeafThriftListener) EnterGoStruct(ctx *parser.GoStructContext) {
-	mi.PrefixedStructToFullNamespace[l.Namespace+"."+ctx.IDENTIFIER().GetText()] = l.FullNamespace
-	mi.PrefixedStructToName[l.Namespace+"."+ctx.IDENTIFIER().GetText()] = ctx.IDENTIFIER().GetText()
-	Logger.Infof("LeafThriftListener: prefixed method=%s, raw name=%s, full namespace=%s", l.Namespace+"."+ctx.IDENTIFIER().GetText(), ctx.IDENTIFIER().GetText(), l.FullNamespace)
+	l.MI.PrefixedStructToFullNamespace[l.Namespace+"."+ctx.IDENTIFIER().GetText()] = l.FullNamespace
+	l.MI.PrefixedStructToName[l.Namespace+"."+ctx.IDENTIFIER().GetText()] = ctx.IDENTIFIER().GetText()
+	l.Logger.Infof("LeafThriftListener: prefixed method=%s, raw name=%s, full namespace=%s", l.Namespace+"."+ctx.IDENTIFIER().GetText(), ctx.IDENTIFIER().GetText(), l.FullNamespace)
 }
 
 func main() {
-	Logger.Level = logrus.InfoLevel
-	Logger.Formatter = &logrus.TextFormatter{
+	logger := logrus.New()
+	logger.Level = logrus.InfoLevel
+	logger.Formatter = &logrus.TextFormatter{
 		FullTimestamp: true,
 	}
 
@@ -200,14 +208,15 @@ func main() {
 	thrift := flag.String("thrift", "idl/base.thrift", "thrift file")
 	flag.Parse()
 
-	mi, _ = template.NewMetaInterface()
+	mi := template.NewMetaInterface()
 	mi.PackageName = *packageName
-	if strings.HasSuffix(*prefix, "/") {
-		mi.Prefix = *prefix
-	} else {
-		mi.Prefix = *prefix + "/"
-	}
-	Logger.Infof("mi.Prefix: %s", mi.Prefix)
+	mi.Prefix = func(s string) string {
+		if strings.HasSuffix(s, "/") {
+			return s
+		}
+		return s + "/"
+	}(*prefix)
+	logger.Infof("mi.Prefix: %s", mi.Prefix)
 
 	// get the absolute path of thrift file
 	thriftFile := *thrift
@@ -215,25 +224,28 @@ func main() {
 		cwd, _ := os.Getwd()
 		thriftFile = cwd + "/" + *thrift
 	}
-	Logger.Infof("thriftFile: %s", thriftFile)
+	logger.Infof("thriftFile: %s", thriftFile)
 
 	if _, err := os.Stat(thriftFile); os.IsNotExist(err) {
-		Logger.Errorf("Open file `%s` err", thriftFile)
+		logger.Errorf("Open file `%s` err", thriftFile)
 		os.Exit(1)
 	}
 
 	fs, err := antlr.NewFileStream(thriftFile)
 	if err != nil {
-		Logger.Errorf("antlr.NewFileStream err: %v", err)
+		logger.Errorf("antlr.NewFileStream err: %v", err)
 		os.Exit(1)
 	}
 
 	p := parser.NewThriftParser(antlr.NewCommonTokenStream(parser.NewThriftLexer(fs), antlr.TokenDefaultChannel))
 	p.BuildParseTrees = true
 
-	var listener RootThriftListener
+	listener := &RootThriftListener{
+		Logger: logger,
+		MI:     mi,
+	}
 	listener.Thrift = algorithms.SimplifyUnixDirectoryPath(thriftFile)
-	antlr.ParseTreeWalkerDefault.Walk(&listener, p.Document())
+	antlr.ParseTreeWalkerDefault.Walk(listener, p.Document())
 
 	fmt.Println(mi.String())
 }
