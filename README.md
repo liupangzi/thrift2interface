@@ -7,7 +7,7 @@ Generate go interfaces for [gomock](https://github.com/golang/mock) testing from
 Run
 
 ```bash
-thrift2interface -package=mypkg -prefix=prefix/ -thrift=./thrift/base.thrift
+thrift2interface -n=mypkg -p=prefix/ -t=./thrift/base.thrift
 ```
 
 would output
